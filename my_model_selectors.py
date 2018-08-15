@@ -76,8 +76,26 @@ class SelectorBIC(ModelSelector):
         """
         warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-        # TODO implement model selection based on BIC scores
-        raise NotImplementedError
+        # initialise variables for storing the best score and model
+        best_score = float("Inf")
+        best_model = self.base_model(self.n_constant)
+
+        try:
+            for i in range(self.min_n_components, self.max_n_components + 1):
+                # Create model, generate the log_likelihood
+                # Then compute the BIC score and check whether it is the best or not
+                model = self.base_model(self.X, self.lengths)
+                log_likelihood = model.score()
+                free_parameters_count = i ** 2 + 2 * i * sum(self.lengths) - 1
+                score = log_likelihood * -2 + free_parameters_count + np.log(sum(self.lengths))
+                if score < best_score:
+                    best_score = score
+                    best_model = model
+
+            return best_model
+
+        except:
+            return best_model
 
 
 class SelectorDIC(ModelSelector):
@@ -93,8 +111,35 @@ class SelectorDIC(ModelSelector):
     def select(self):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-        # TODO implement model selection based on DIC scores
-        raise NotImplementedError
+        best_score = float("-Inf")
+        best_model = self.base_model(self.n_constant)
+        model_list = []
+        log_likelihoods = []
+        dic_scores = []
+
+        # Generate log likelihoods for models
+        try:
+            for i in range(self.min_n_components, self.max_n_components + 1):
+                model = self.base_model(i)
+                model_list[i] = model
+                log_likelihoods[i] = model.score()
+
+        except:
+            pass
+
+        # Then using those log likelihoods compute DIC scores
+        for i in range(len(model_list)):
+            modified_log_likelihoods = log_likelihoods.pop(i)
+            dic = log_likelihoods[i] - np.mean(modified_log_likelihoods)
+            dic_scores.append(dic)
+
+        # Finally find the best score
+        for i in range(len(model_list)):
+            if dic_scores[i] > best_score:
+                best_score = dic_scores[i]
+                best_model = model_list[i]
+
+        return best_model
 
 
 class SelectorCV(ModelSelector):
@@ -105,5 +150,32 @@ class SelectorCV(ModelSelector):
     def select(self):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-        # TODO implement model selection using CV
-        raise NotImplementedError
+        # Initialise variables for best score and model
+        best_score = float('-Inf')
+        best_model = self.base_model(self.n_constant)
+
+        try:
+            for i in range(self.min_n_components, self.max_n_components + 1):
+
+                model = self.base_model(i)
+                scores = []
+
+                # Bumping n_splits up to 3 significantly increases WER, so left it at 2
+                split_method = KFold(n_splits = 2)
+
+                # Rotate a fold out of training and score it, then find the best model by comparing scores
+                for cv_train_idx, cv_test_idx in split_method.split(self.sequences):
+                    self.X, self.lengths = combine_sequences(cv_train_idx, self.sequences)
+                    train_model = self.base_model(i)
+                    X, lengths = combine_sequences(cv_test_idx, self.sequences)
+                    scores.append(train_model.score(X, lengths))
+                    cv_score = np.mean(scores)
+
+                    if cv_score > best_score:
+                        best_score = cv_score
+                        best_model = model
+
+            return best_model
+
+        except:
+            return best_model
